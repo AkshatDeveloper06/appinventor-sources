@@ -51,12 +51,33 @@ public final class NewYoungAndroidProjectWizard {
   @UiField Button cancelButton;
   @UiField LabeledTextBox projectNameTextBox;
 
+  @UiField LabeledTextBox packageNameTextBox;
+
   /**
    * Creates a new YoungAndroid project wizard.
    */
   public NewYoungAndroidProjectWizard() {
     UI_BINDER.createAndBindUi(this);
     projectNameTextBox.setValidator(new Validator() {
+      @Override
+      public boolean validate(String value) {
+        errorMessage = TextValidators.getErrorMessage(value);
+        projectNameTextBox.setErrorMessage(errorMessage);
+        if (errorMessage.length() > 0) {
+          addButton.setEnabled(false);
+          return false;
+        }
+        errorMessage = TextValidators.getWarningMessages(value);
+        addButton.setEnabled(true);
+        return true;
+      }
+      @Override
+      public String getErrorMessage() {
+        return errorMessage;
+      }
+    });
+
+    packageNameTextBox.setValidator(new Validator() {
       @Override
       public boolean validate(String value) {
         errorMessage = TextValidators.getErrorMessage(value);
@@ -104,21 +125,36 @@ public final class NewYoungAndroidProjectWizard {
 
   @UiHandler("addButton")
   void addProject(ClickEvent e) {
+    // Extract the project name from the text box
     String projectName = projectNameTextBox.getText().trim();
     projectName = projectName.replaceAll("( )+", " ").replace(" ", "_");
+
+    // Validate the project name using TextValidators
     TextValidators.ProjectNameStatus status = TextValidators.checkNewProjectName(projectName);
+
     if (status == TextValidators.ProjectNameStatus.SUCCESS) {
+      // Project name is valid, proceed with project creation
       LOG.info("Project status success");
-      doCreateProject(projectName);
+
+      // Extract the custom package name from the customPackageNameTextBox
+      String customPackageName = packageNameTextBox.getText().trim();
+
+      // Call the modified doCreateProject method that takes customPackageName as a parameter
+      doCreateProject(projectName, customPackageName);
+
+      // Hide the project creation dialog
       addDialog.hide();
     } else {
+      // Handle validation errors or warnings
       LOG.info("Checking for error");
       String errorMessage = TextValidators.getErrorMessage(projectNameTextBox.getText());
+
       if (errorMessage.length() > 0) {
         LOG.info("Found error: " + errorMessage);
         projectNameTextBox.setErrorMessage(errorMessage);
       } else {
         errorMessage = TextValidators.getWarningMessages(projectNameTextBox.getText());
+
         if (errorMessage.length() > 0) {
           projectNameTextBox.setErrorMessage(errorMessage);
         } else {
@@ -130,11 +166,14 @@ public final class NewYoungAndroidProjectWizard {
   }
 
 
-  public void doCreateProject(String projectName) {
-    String packageName = StringUtils.getProjectPackage(
-        Ode.getInstance().getUser().getUserEmail(), projectName);
-    NewYoungAndroidProjectParameters parameters = new NewYoungAndroidProjectParameters(
-        packageName);
+  public void doCreateProject(String projectName, String customPackageName) {
+    // Use the custom package name if provided, otherwise generate one
+    String packageName = (customPackageName != null && !customPackageName.isEmpty())
+            ? customPackageName
+            : StringUtils.getProjectPackage(Ode.getInstance().getUser().getUserEmail(), projectName);
+
+    NewYoungAndroidProjectParameters parameters = new NewYoungAndroidProjectParameters(packageName);
+
     NewProjectWizard.NewProjectCommand callbackCommand = new NewProjectWizard.NewProjectCommand() {
       @Override
       public void execute(final Project project) {
@@ -152,7 +191,8 @@ public final class NewYoungAndroidProjectWizard {
     };
 
     NewProjectWizard.createNewProject(YoungAndroidProjectNode.YOUNG_ANDROID_PROJECT_TYPE, projectName,
-        parameters, callbackCommand);
+            parameters, callbackCommand);
+
     Tracking.trackEvent(Tracking.PROJECT_EVENT, Tracking.PROJECT_ACTION_NEW_YA, projectName);
   }
 }
